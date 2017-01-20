@@ -1,0 +1,324 @@
+---
+title: "Highlights of Rstudio::Conf"
+subtitle: "Readable code, Rmarkdown, Sparklyr, Shiny"
+author: "Dani Jiang"
+date: "2017/01/18"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE,eval=FALSE,warning=FALSE,cache=FALSE)
+```
+
+background-image: url(https://www.rstudio.com/wp-content/uploads/2015/01/Untitled.001.jpeg)
+
+???
+
+Image credit: [R studio](https://www.rstudio.com/about/gear/)
+
+---
+class: inverse, center, middle
+
+background-image: url(https://d21ii91i3y6o6h.cloudfront.net/gallery_images/from_proof/9302/large/1447173978/rstudio-hex-pipe-dot-psd.png)
+background-size: 200px
+background-position: 90% 8%
+
+# Write Readable Code with Pipes
+
+---
+background-image: url(https://i.ytimg.com/vi/AzOBIoOaNWU/hqdefault.jpg)
+background-size: 250px
+background-position: 90% 90%
+
+# What are Pipes
+
+Package: magrittr
+
+Type: Package
+
+Title: magrittr - a forward-pipe operator for R
+Author: Stefan Milton Bache <stefan@stefanbache.dk> and
+    Hadley Wickham <h.wickham@gmail.com>
+    
+Description: Provides a mechanism for chaining commands with a
+    new forward-pipe operator. Ceci n'est pas un pipe.
+
+---
+
+# What does “forward chaining” look like?
+
+--
+### R code without pipes
+
+**result <- operation(object)**
+
+--
+
+operation <- function(data, param1, …) {
+
+    data <- do_stuff_with(data)
+  
+    data <- do_even_morestuff_with(data)
+  
+    data}
+--
+### Using pipes
+
+object %>% operation() -> result
+
+** Data First**
+
+
+---
+
+# A Real Example<sup>1</sup>
+
+--
+### Plot all the baby names starting with "Ste" by year and gender
+
+--
+
+```{r,eval=FALSE,warning=FALSE,cache=FALSE}
+library(babynames) # data package
+library(dplyr)     # provides data manipulating functions.
+library(magrittr)  # ceci n'est pas un pipe
+library(ggplot2)   # for graphics
+
+babynames %>%
+    filter(name %>% substr(1, 3) %>% equals("Ste")) %>%
+    group_by(year, sex) %>%
+    summarize(total = sum(n)) %>%
+    qplot(year, total, color = sex, data = ., geom = "line") %>%
+    add(ggtitle('Names starting with "Ste"')) %>%
+    print
+```
+
+
+.footnote[
+[1] This Example is from [R Statistics](https://www.r-statistics.com/2014/08/simpler-r-coding-with-pipes-the-present-and-future-of-the-magrittr-package/)
+]
+
+---
+
+# Read the code like a recipe
+
+--
+.pull-left[
+```{r,eval=FALSE,warning=FALSE,cache=FALSE}
+babynames %>%
+  
+  filter(name %>% substr(1, 3) 
+         %>% equals("Ste")) %>%
+  
+  group_by(year, gender) %>%
+  
+  summarize(total = sum(n)) %>%
+  
+  qplot(year, total, color = gender, data = ., geom = "line") %>%
+  
+  add(ggtitle('Names starting with "Ste"')) %>%
+  
+  print
+```
+]
+
+.pull-right[
+1. Take the baby names data;
+
+1. Filter it such that the name sub-string from character 1 to 3 equals "Ste";
+
+1. Group it by year and sex;
+
+1. Summarize it by computing total sum for each group;
+
+1. Plot the resuls, coloring by sex;
+
+1. Add a title;
+
+1. Print it to the canvas.
+]
+
+
+---
+
+# Another Example
+
+--
+Read all these jason files into R and clean up:
+
+cowrie_2017-01-03T004539.json.gz  cowrie_2017-01-03T044239.json.gz  cowrie_2017-01-03T065255.json.gz
+cowrie_2017-01-03T010619.json.gz  cowrie_2017-01-03T044746.json.gz  cowrie_2017-01-03T073818.json.gz
+cowrie_2017-01-03T014616.json.gz  cowrie_2017-01-03T045817.json.gz 
+
+--
+```{r,eval=FALSE,warning=FALSE,cache=FALSE}
+library(ndjson)
+library(anytime)
+
+do.call(rbind, lapply(list.files("data/honeypot", pattern="cowrie.*json.gz", 
+                                 full.names=TRUE), function(x) {
+  df <- as.data.frame(stream_in(x))
+  df <- df[,c("timestamp", "src_ip", "src_port", "sensor", 
+              "session", "eventid", "username", "password")]
+  df$timestamp <- anytime(df$timestamp)
+  df
+})) -> cowrie_df
+```
+
+You will hate yourself when you come back and look at this code in one month
+
+
+---
+
+# This one is better 
+
+--
+
+## and... Mo won't hate me
+
+--
+```{r,eval=FALSE,warning=FALSE,cache=FALSE}
+# Separated out functionality and made the code a bit more modular
+
+stream_and_filter <- function(x) {
+  df <- as.data.frame(stream_in(x))
+  df <- df[,c("timestamp", "src_ip", "src_port", “sensor”,
+              "session", "dst_port", "eventid", “username",
+              "password")]
+  df$timestamp <- anytime(df$timestamp)
+  df
+}
+
+fils <- list.files("data/honeypot", 
+                   pattern="cowrie.*json.gz", full.names=TRUE)
+cowrie_df_list <- lapply(fils, stream_and_filter)
+cowrie_df <- do.call(rbind, cowrie_df_list)
+```
+
+
+
+
+---
+
+# Now with Pipes
+
+--
+```{r,eval=FALSE,warning=FALSE,cache=FALSE}
+list.files("data/honeypot", pattern = "cowrie.*json.gz", 
+                            full.names = TRUE) %>%
+  map_df(stream_in) %>%
+  select(timestamp, src_ip, src_port, sensor, session,
+         dst_port, eventid, username, password) %>%
+  mutate(timestamp = anytime(timestamp))
+
+```
+
+--
+Me, Mo and Future Me are all happy
+
+
+---
+
+class: inverse
+
+background-image: url(https://d21ii91i3y6o6h.cloudfront.net/gallery_images/from_proof/9305/large/1447176269/rstudio-hex-rmarkdown-dot-psd.png)
+background-size: 200px
+background-position: 90% 12%
+
+
+
+--
+class: inverse, left, top
+
+# I <3 R
+
+# I <3 R Markdown
+
+--
+
+background-image: url(http://i.imgur.com/UlP0l.gif)
+background-size: 400px
+background-position: 10% 90%
+
+
+## Make you look awesome with a simple tool
+
+
+
+---
+class: inverse, middle, center
+
+# What I knew about R Mardown before the Conference
+
+---
+
+background-image: url(jump-off.gif)
+background-size: contain
+class: bottom, center, inverse
+
+# I took a deep breath and tried what I learned from my Trip!
+
+
+---
+
+# Powerful yet Easy-to-use Tools
+
+- R Markdown Slides: Xaringan
+    
+    - [Html Widgets](https://slides.yihui.name/xaringan/#20)
+
+- R Markdown Book: R Bookdown
+
+    - [Easily write books together](https://bookdown.org/yihui/bookdown/markdown-syntax.html#math-expressions)
+  
+    - [Another Example](http://adv-r.had.co.nz/)
+
+- R Markdown Website: [R Blogdown](https://github.com/rstudio/blogdown)
+
+    - [An Example](https://proquestionasker.github.io/blog/Making_Site/)
+
+---
+class: inverse
+
+background-image: url(http://spark.rstudio.com/home/README_files/images/sparklyr-illustration.png)
+background-size: 400px
+background-position: 90% 12%
+
+class: bottom, left, inverse
+
+## [Example with Common Crawl data](http://commoncrawl.org/)
+
+# [See the code](https://beta.rstudioconnect.com/content/2371/r-and-spark.html#5)
+---
+
+class: inverse
+
+background-image: url(https://d21ii91i3y6o6h.cloudfront.net/gallery_images/from_proof/9306/small/1447177198/rstudio-hex-shiny-dot-psd.png)
+background-size: 200px
+background-position: 90% 12%
+
+class: middle, left, inverse
+
+## Static Dashboard -- Flexdashboard
+
+--
+
+## [Shiny](https://shiny.rstudio.com/gallery/reactive-poll-and-file-reader.html) 
+    
+  
+
+
+---
+
+class: center, middle
+
+# Thanks!
+
+Slides created via the R package [**xaringan**](https://github.com/yihui/xaringan).
+
+The chakra comes from [remark.js](https://remarkjs.com), [**knitr**](http://yihui.name/knitr), and [R Markdown](https://rmarkdown.rstudio.com).
